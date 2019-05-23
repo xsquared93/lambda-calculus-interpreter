@@ -1,73 +1,79 @@
 (define apply-in-underlying-scheme apply)
 
 (define (eval exp)
-  (cond ((self-evaluating? exp) exp)
-	((and (lambda? exp)
-	      (application? (car (lambda-body exp)))
-	      (lambda? (operator (car (lambda-body exp)))))
-	 (make-lambda (lambda-parameters exp) (eval (car (lambda-body exp)))))
-	((and (lambda? exp)
-	      (application? (car (lambda-body exp)))
-	      (not (lambda? (operator (car (lambda-body exp))))))
-	 (make-lambda (lambda-parameters exp) (car (lambda-body exp))))
+  (cond ((variable? exp) exp)
+	((lambda? exp)
+	 (make-lambda (lambda-parameters exp)
+		      (eval (first (lambda-body exp)))))
 	((application? exp)
 	 (apply (eval (operator exp))
-		(list-of-values (operands exp))))))
+		      (list-of-values (operands exp))))
+	(else (error "Unknown Expression Type -- EVAL" exp))))
 
 (define (apply procedure arguments)
-   (apply-beta-reduction procedure arguments))
+  (subst (lambda-body procedure)
+	 (arg arguments)))
 
-(define (apply-beta-reduction procedure arguments)
-  (cond ((lambda? procedure)
-	 (if (not (pair? (car (lambda-body procedure))))
-	     (car arguments)
-	     (subst (car (lambda-body procedure)) (car arguments))))
-	(error "Invalid procedure --APPLY-BETA-REDUCTION" procedure)))
+(define (subst body arguments)
+  (let ((solution (subst-helper body arguments)))
+    (if (eq? (length solution) 1)
+	(first solution)
+	solution)))
+
+(define (subst-helper body argument)
+  (if (null? body)
+      '()
+      (cons argument
+	    (subst-helper (cdr body) argument))))
 
 (define (list-of-values exps)
   (if (no-operands? exps)
       '()
       (cons (eval (first-operand exps))
-	    (list-of-values (cdr exps)))))
+	    (list-of-values (rest-operands exps)))))
 
-(define (self-evaluating? exp)
-  (cond ((and (lambda? exp)
-	      (not (application? (car (lambda-body exp))))) true)
-	((variable? exp) true)
-	(else false)))
+;;; data representation
 
-(define (application? exp)
-  (pair? exp))
+;; representation of abstractions ie lambda expressions
 
-(define (operator exp) (car exp))
-
-(define (operands exp) (cdr exp))
-
-(define (no-operands? ops) (null? ops))
-
-(define (first-operand ops) (car ops))
-
-(define (rest-operands ops) (cdr ops))
-
-(define (lambda? exp)
-  (tagged-list? exp 'lambda))
+(define (make-lambda parameters body)
+  (list 'lambda parameters body))
 
 (define (lambda-parameters exp) (cadr exp))
 
 (define (lambda-body exp) (cddr exp))
 
-(define (make-lambda parameters body)
-  (list 'lambda parameters body))
+(define (lambda? exp)
+  (tagged-list? exp 'lambda))
 
-(define (variable? exp)
-  (symbol? exp))
+;; representation of applications
+
+(define (application? exp) (pair? exp))
+
+(define (operator exp) (car exp))
+
+(define (operands exp) (cdr exp))
+
+;; variables
+
+(define (variable? exp) (symbol? exp))
+
+;; selectors for operands
+
+(define (first-operand ops) (car ops))
+
+(define (rest-operands ops) (cdr ops))
+
+(define (no-operands? ops) (null? ops))
+
+;;; other
 
 (define (tagged-list? exp tag)
   (if (pair? exp)
       (eq? (car exp) tag)
       false))
 
-;; examples
+;; tests
 
 ;; example 1
 (define exp1 '((lambda (x) x) (lambda (y) y)))
@@ -82,35 +88,6 @@
 
 ;; example 3
 
-(define exp3 '((lambda (x) x) ((lambda (x) x) (lambda (z) ((lambda (x) x) z)))))
+(define exp3 '((lambda (x) x) ((lambda (y) y) (lambda (z) ((lambda (x) x) z)))))
 (eval exp3)
 ;;value: (lambda (z) z)
-
-;; example 4
-(define exp4 '((lambda (x) (x x)) y))
-;; (eval exp4)
-;; value: (y y)
-
-;; example 5
-(define exp5 '((lambda (x) (lambda (y) y)) d))
-;; (eval exp5)
-;; value: (lambda (y) y)
-;; scratch
-
-(define (subst body argument)
-  (cond ((null? body) '())
-	(else (cons argument
-		    (subst (cdr body) argument)))))
-		
-		
-(define (redex? exp)
-  (if (and (application? exp)
-	   (lambda? (operator exp)))
-      true
-      false))
-
-(define (normal-form? exp)
-  (if (and (not (redex? exp))
-	   (not (redex? (car (lambda-body exp)))))
-      true
-      false))
